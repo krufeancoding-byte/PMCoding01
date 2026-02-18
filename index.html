@@ -269,7 +269,8 @@
         const SUPABASE_URL = 'https://xltfkvqplbpwyzzibhsd.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhsdGZrdnFwbGJwd3l6emliaHNkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MzA0MDYsImV4cCI6MjA4NzAwNjQwNn0.ipeTjVrXu6UC9VroOK5d7WXmo-2TtklpCWz8n36vnx8';
         
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        // CORRECTION: เปลี่ยนชื่อตัวแปรเป็น supabaseClient เพื่อไม่ให้ชนกับ Library หลัก
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         
         // State
         let currentUser = null;
@@ -280,7 +281,8 @@
         // --- Init ---
         async function init() {
             showLoader(true);
-            const { data: { session } } = await supabase.auth.getSession();
+            // ใช้ supabaseClient แทน
+            const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
                 currentUser = session.user;
                 await fetchProfile();
@@ -288,7 +290,7 @@
             updateUI();
             
             // Listen for auth changes
-            supabase.auth.onAuthStateChange(async (event, session) => {
+            supabaseClient.auth.onAuthStateChange(async (event, session) => {
                 if (event === 'SIGNED_IN') {
                     currentUser = session.user;
                     await fetchProfile();
@@ -308,7 +310,11 @@
         }
 
         async function fetchProfile() {
-            const { data, error } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .eq('id', currentUser.id)
+                .single();
             if (data) userProfile = data;
         }
 
@@ -332,8 +338,15 @@
                 if (userProfile?.role !== 'admin') return Swal.fire('Error', 'Access Denied', 'error');
                 document.getElementById('view-dashboard').classList.remove('hidden');
                 loadStats();
+            } else if (viewId === 'manage-courses') {
+                // เพิ่ม placeholder สำหรับหน้าจัดการ
+                 if (userProfile?.role !== 'admin') return;
+                 Swal.fire('Info', 'หน้านี้สำหรับเพิ่มฟีเจอร์ CRUD วิชาเรียน', 'info');
+            } else if (viewId === 'check-slips') {
+                 // เพิ่ม placeholder สำหรับหน้าตรวจสลิป
+                 if (userProfile?.role !== 'admin') return;
+                 Swal.fire('Info', 'หน้านี้สำหรับ Admin อนุมัติสลิป', 'info');
             }
-            // Add other admin views logic here
         }
 
         function updateUI() {
@@ -396,7 +409,11 @@
 
         // --- Data Loading ---
         async function loadCourses() {
-            const { data, error } = await supabase.from('courses').select('*').order('created_at', { ascending: false });
+            const { data, error } = await supabaseClient
+                .from('courses')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
             if (error) return console.error(error);
             
             const container = document.getElementById('courses-grid');
@@ -425,7 +442,7 @@
         }
 
         async function loadMyCourses() {
-            const { data, error } = await supabase
+            const { data, error } = await supabaseClient
                 .from('registrations')
                 .select('*, courses(*)')
                 .eq('user_id', currentUser.id);
@@ -433,7 +450,7 @@
             if (error) return Swal.fire('Error', error.message, 'error');
 
             const container = document.getElementById('my-courses-list');
-            if (data.length === 0) {
+            if (!data || data.length === 0) {
                 container.innerHTML = `<div class="col-span-2 text-center text-gray-400 py-10">ยังไม่ได้ลงทะเบียนวิชาใดๆ</div>`;
                 return;
             }
@@ -456,11 +473,12 @@
         }
 
         async function loadStats() {
-            // Simple Counts (In real app, use count query)
-            const { count: usersCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-            const { count: regCount } = await supabase.from('registrations').select('*', { count: 'exact', head: true });
-            const { count: pendingCount } = await supabase.from('registrations').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+            // ใช้ supabaseClient
+            const { count: usersCount } = await supabaseClient.from('profiles').select('*', { count: 'exact', head: true });
+            const { count: regCount } = await supabaseClient.from('registrations').select('*', { count: 'exact', head: true });
+            const { count: pendingCount } = await supabaseClient.from('registrations').select('*', { count: 'exact', head: true }).eq('status', 'pending');
             
+            // Dummy income calc (for demo)
             document.getElementById('stat-users').innerText = usersCount || 0;
             document.getElementById('stat-reg').innerText = regCount || 0;
             document.getElementById('stat-pending').innerText = pendingCount || 0;
@@ -477,14 +495,14 @@
             try {
                 let error;
                 if (isRegisterMode) {
-                    const res = await supabase.auth.signUp({
+                    const res = await supabaseClient.auth.signUp({
                         email, password,
                         options: { data: { full_name: fullName } }
                     });
                     error = res.error;
                     if (!error) Swal.fire('สำเร็จ', 'สมัครสมาชิกเรียบร้อย', 'success');
                 } else {
-                    const res = await supabase.auth.signInWithPassword({ email, password });
+                    const res = await supabaseClient.auth.signInWithPassword({ email, password });
                     error = res.error;
                 }
 
@@ -509,7 +527,7 @@
                 cancelButtonText: 'ยกเลิก'
             }).then(async (result) => {
                 if (result.isConfirmed) {
-                    await supabase.auth.signOut();
+                    await supabaseClient.auth.signOut();
                     // UI updates automatically via onAuthStateChange
                 }
             })
@@ -554,13 +572,14 @@
                 const fileName = `${Date.now()}.${fileExt}`;
                 const filePath = `${currentUser.id}/${fileName}`;
                 
-                const { error: uploadError } = await supabase.storage.from('slips').upload(filePath, file);
+                // ใช้ supabaseClient
+                const { error: uploadError } = await supabaseClient.storage.from('slips').upload(filePath, file);
                 if (uploadError) throw uploadError;
 
-                const { data: { publicUrl } } = supabase.storage.from('slips').getPublicUrl(filePath);
+                const { data: { publicUrl } } = supabaseClient.storage.from('slips').getPublicUrl(filePath);
 
                 // 2. Insert Registration
-                const { error: dbError } = await supabase.from('registrations').insert({
+                const { error: dbError } = await supabaseClient.from('registrations').insert({
                     user_id: currentUser.id,
                     course_id: selectedCourseId,
                     slip_url: publicUrl,
